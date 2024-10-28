@@ -1,0 +1,332 @@
+#Simulación de propagación de Malware
+
+#Por David Ruiz
+#Puedes usar mi script siempre y cuando me des créditos en mis redes sociales @viajatech
+#Se agredecido y dale estrella a este repositorio, gracias! 
+
+#Recuerda primero instalar las librerias!!! 
+#pip install ttkbootstrap networkx matplotlib numpy
+
+
+
+import tkinter as tk
+from tkinter import ttk, scrolledtext, messagebox
+import threading
+import time
+import random
+import queue
+import networkx as nx
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+import numpy as np
+import ttkbootstrap as ttk
+
+# Configuración de la simulación
+MAX_REPLICAS = 10  # Número máximo de réplicas
+SCAN_INTERVAL = 2  # Intervalo entre cada escaneo (en segundos)
+REPLICATE_INTERVAL = 3  # Intervalo entre cada replicación (en segundos)
+
+class SimulationApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Contagio by Viaja Tech")
+        self.root.geometry("1000x700")
+        self.root.resizable(False, False)
+
+        # Variables de estado
+        self.is_scanning = False
+        self.is_replicating = False
+        self.discovered_devices = []
+        self.replicated_devices = []
+        self.log_queue = queue.Queue()
+        self.time_data = []
+        self.replica_data = []
+
+        # Configuración de la GUI
+        self.create_widgets()
+
+        # Iniciar el hilo de actualización del log
+        self.root.after(100, self.process_log_queue)
+
+    def create_widgets(self):
+        # Crear pestañas
+        self.tab_control = ttk.Notebook(self.root)
+        self.simulation_tab = ttk.Frame(self.tab_control)
+        self.info_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(self.simulation_tab, text='Simulación')
+        self.tab_control.add(self.info_tab, text='Información')
+        self.tab_control.pack(expand=1, fill='both')
+
+        # Configuración de la pestaña de simulación
+        self.create_simulation_tab()
+
+        # Contenido de la pestaña de información
+        self.create_info_tab()
+
+    def create_simulation_tab(self):
+        # Frame de configuración
+        config_frame = ttk.LabelFrame(self.simulation_tab, text="Configuración")
+        config_frame.pack(fill="x", padx=10, pady=5)
+
+        ttk.Label(config_frame, text="Máximo de Réplicas:").grid(row=0, column=0, padx=5, pady=5, sticky='e')
+        self.max_replicas_var = tk.IntVar(value=MAX_REPLICAS)
+        ttk.Entry(config_frame, textvariable=self.max_replicas_var, width=10).grid(row=0, column=1, padx=5, pady=5, sticky='w')
+
+        ttk.Label(config_frame, text="Intervalo de Escaneo (s):").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        self.scan_interval_var = tk.IntVar(value=SCAN_INTERVAL)
+        ttk.Entry(config_frame, textvariable=self.scan_interval_var, width=10).grid(row=1, column=1, padx=5, pady=5, sticky='w')
+
+        ttk.Label(config_frame, text="Intervalo de Replicación (s):").grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        self.replicate_interval_var = tk.IntVar(value=REPLICATE_INTERVAL)
+        ttk.Entry(config_frame, textvariable=self.replicate_interval_var, width=10).grid(row=2, column=1, padx=5, pady=5, sticky='w')
+
+        ttk.Label(config_frame, text="Escenario:").grid(row=3, column=0, padx=5, pady=5, sticky='e')
+        self.scenario_var = tk.StringVar(value="Red Doméstica")
+        ttk.Combobox(config_frame, textvariable=self.scenario_var, values=["Red Doméstica", "Red Empresarial", "Red Pública"]).grid(row=3, column=1, padx=5, pady=5, sticky='w')
+
+        # Frame de control
+        control_frame = ttk.Frame(self.simulation_tab)
+        control_frame.pack(fill="x", padx=10, pady=5)
+
+        self.start_button = ttk.Button(control_frame, text="Iniciar Simulación", command=self.start_simulation)
+        self.start_button.pack(side='left', padx=5)
+
+        self.stop_button = ttk.Button(control_frame, text="Detener Simulación", command=self.stop_simulation, state='disabled')
+        self.stop_button.pack(side='left', padx=5)
+
+        # Frame de visualización de dispositivos
+        devices_frame = ttk.LabelFrame(self.simulation_tab, text="Mapa de Red")
+        devices_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # Crear figura de matplotlib para el mapa de red
+        self.network_fig, self.network_ax = plt.subplots(figsize=(5, 4))
+        self.network_canvas = FigureCanvasTkAgg(self.network_fig, master=devices_frame)
+        self.network_canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        # Frame de estadísticas en tiempo real
+        stats_frame = ttk.LabelFrame(self.simulation_tab, text="Estadísticas en Tiempo Real")
+        stats_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        self.stats_fig, self.stats_ax = plt.subplots(figsize=(5, 2))
+        self.stats_line, = self.stats_ax.plot([], [], 'r-')
+        self.stats_canvas = FigureCanvasTkAgg(self.stats_fig, master=stats_frame)
+        self.stats_canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        # Frame de registro de actividades
+        log_frame = ttk.LabelFrame(self.simulation_tab, text="Registro de Actividades")
+        log_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        self.log_text = scrolledtext.ScrolledText(log_frame, state='disabled', height=10)
+        self.log_text.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Iniciar la actualización de estadísticas
+        self.root.after(1000, self.update_stats)
+
+    def create_info_tab(self):
+        info_label = ttk.Label(self.info_tab, text="""
+Bienvenido a Contagio by Viaja Tech (David Ruiz).
+
+Esta aplicación simula la propagación de malware en una red para fines educativos.
+
+Conceptos Clave:
+- Gusanos Informáticos
+- Escaneo de Red
+- Medidas de Seguridad
+- Respuesta a Incidentes
+
+Recursos Adicionales:
+- [Linktree](https://linktr.ee/viajatech)
+- [Instagram](https://www.instagram.com/viajatech/)
+""")
+        info_label.pack(padx=10, pady=10)
+
+    def start_simulation(self):
+        # Actualizar parámetros según la configuración
+        self.max_replicas = self.max_replicas_var.get()
+        self.scan_interval = self.scan_interval_var.get()
+        self.replicate_interval = self.replicate_interval_var.get()
+        scenario = self.scenario_var.get()
+
+        # Validar parámetros
+        if self.max_replicas < 1:
+            messagebox.showerror("Error de Configuración", "El número máximo de réplicas debe ser al menos 1.")
+            return
+        if self.scan_interval < 1:
+            messagebox.showerror("Error de Configuración", "El intervalo de escaneo debe ser al menos 1 segundo.")
+            return
+        if self.replicate_interval < 1:
+            messagebox.showerror("Error de Configuración", "El intervalo de replicación debe ser al menos 1 segundo.")
+            return
+
+        # Configurar escenario
+        self.configure_scenario(scenario)
+
+        # Reiniciar variables
+        self.is_scanning = True
+        self.is_replicating = True
+        self.discovered_devices = []
+        self.replicated_devices = []
+        self.time_data = []
+        self.replica_data = []
+        self.network_ax.clear()
+        self.stats_ax.clear()
+        self.start_time = time.time()
+
+        self.start_button.config(state='disabled')
+        self.stop_button.config(state='normal')
+
+        self.log_queue.put("Simulación iniciada.\n")
+        self.log_queue.put(f"Escenario seleccionado: {scenario}\n")
+        self.log_queue.put(f"Máximo de réplicas: {self.max_replicas}\n")
+        self.log_queue.put(f"Intervalo de escaneo: {self.scan_interval} segundos\n")
+        self.log_queue.put(f"Intervalo de replicación: {self.replicate_interval} segundos\n")
+
+        threading.Thread(target=self.scan_network, daemon=True).start()
+        threading.Thread(target=self.replicate, daemon=True).start()
+
+    def stop_simulation(self):
+        self.is_scanning = False
+        self.is_replicating = False
+        self.start_button.config(state='normal')
+        self.stop_button.config(state='disabled')
+        self.log_queue.put("Simulación detenida.\n")
+        self.generate_report()
+
+    def configure_scenario(self, scenario):
+        if scenario == "Red Doméstica":
+            # Configuración para red doméstica
+            self.simulated_devices = [f"192.168.1.{i}" for i in range(2, 10)]
+            security_levels = ['Bajo'] * len(self.simulated_devices)
+        elif scenario == "Red Empresarial":
+            # Configuración para red empresarial
+            self.simulated_devices = [f"10.0.0.{i}" for i in range(1, 51)]
+            security_levels = ['Alto' if random.random() > 0.2 else 'Medio' for _ in self.simulated_devices]
+        elif scenario == "Red Pública":
+            # Configuración para red pública
+            self.simulated_devices = [f"172.16.0.{i}" for i in range(1, 21)]
+            security_levels = ['Medio'] * len(self.simulated_devices)
+        else:
+            self.simulated_devices = []
+            security_levels = []
+
+        self.devices_info = [{'ip': ip, 'security': sec} for ip, sec in zip(self.simulated_devices, security_levels)]
+
+    def scan_network(self):
+        while self.is_scanning:
+            self.log_queue.put("Iniciando escaneo de red...\n")
+            # Simulación de escaneo: seleccionar dispositivos aleatorios
+            discovered = random.sample(self.devices_info, random.randint(1, min(5, len(self.devices_info))))
+            for device in discovered:
+                if device['ip'] not in [d['ip'] for d in self.discovered_devices]:
+                    self.discovered_devices.append(device)
+                    self.log_queue.put(f"Dispositivo descubierto: {device['ip']} (Seguridad: {device['security']})\n")
+            self.update_network_map()
+            time.sleep(self.scan_interval)
+
+    def replicate(self):
+        while self.is_replicating and len(self.replicated_devices) < self.max_replicas:
+            time.sleep(self.replicate_interval)
+            if not self.discovered_devices:
+                self.log_queue.put("No hay dispositivos disponibles para replicar.\n")
+                continue
+            target_device = random.choice(self.discovered_devices)
+            target_ip = target_device['ip']
+            if target_ip not in [d['ip'] for d in self.replicated_devices]:
+                # Calcular probabilidad de éxito
+                security = target_device['security']
+                if security == 'Bajo':
+                    success_rate = 0.9
+                elif security == 'Medio':
+                    success_rate = 0.5
+                else:
+                    success_rate = 0.1
+                if random.random() < success_rate:
+                    self.replicated_devices.append(target_device)
+                    self.log_queue.put(f"Replicación exitosa en: {target_ip}\n")
+                else:
+                    self.log_queue.put(f"Replicación fallida en: {target_ip} (Detectado y bloqueado)\n")
+            else:
+                self.log_queue.put(f"Ya se ha replicado en: {target_ip}\n")
+            self.update_network_map()
+        if len(self.replicated_devices) >= self.max_replicas:
+            self.log_queue.put("Se ha alcanzado el número máximo de réplicas.\n")
+            self.stop_simulation()
+
+    def update_network_map(self):
+        self.network_ax.clear()
+        G = nx.Graph()
+        # Añadir nodos y conexiones
+        for device in self.discovered_devices:
+            G.add_node(device['ip'], security=device['security'])
+        # Simular conexiones
+        for i in range(len(self.discovered_devices)):
+            for j in range(i+1, len(self.discovered_devices)):
+                if random.choice([True, False]):
+                    G.add_edge(self.discovered_devices[i]['ip'], self.discovered_devices[j]['ip'])
+        # Dibujar el grafo
+        color_map = []
+        for node in G.nodes(data=True):
+            ip = node[0]
+            if ip in [d['ip'] for d in self.replicated_devices]:
+                color_map.append('red')  # Dispositivo replicado
+            else:
+                color_map.append('green')  # Dispositivo disponible
+        pos = nx.spring_layout(G)
+        nx.draw(G, pos, ax=self.network_ax, with_labels=True, node_color=color_map)
+        self.network_canvas.draw()
+
+    def process_log_queue(self):
+        while not self.log_queue.empty():
+            log = self.log_queue.get()
+            self.log_text.config(state='normal')
+            self.log_text.insert(tk.END, log)
+            self.log_text.see(tk.END)
+            self.log_text.config(state='disabled')
+        self.root.after(100, self.process_log_queue)
+
+    def update_stats(self):
+        if self.is_replicating:
+            elapsed_time = time.time() - self.start_time
+            self.time_data.append(elapsed_time)
+            self.replica_data.append(len(self.replicated_devices))
+            self.stats_ax.clear()
+            self.stats_ax.plot(self.time_data, self.replica_data, 'r-')
+            self.stats_ax.set_xlabel('Tiempo (s)')
+            self.stats_ax.set_ylabel('Réplicas')
+            self.stats_ax.set_title('Replicación en Tiempo Real')
+            self.stats_canvas.draw()
+        self.root.after(1000, self.update_stats)
+
+    def generate_report(self):
+        total_devices = len(self.discovered_devices)
+        total_replicated = len(self.replicated_devices)
+        success_rate = (total_replicated / self.max_replicas) * 100 if self.max_replicas > 0 else 0
+
+        report_text = f"""
+Reporte de Simulación - Contagio by Viaja Tech
+----------------------------------------------
+Dispositivos descubiertos: {total_devices}
+Réplicas exitosas: {total_replicated}
+Tasa de éxito: {success_rate:.2f}%
+"""
+
+        # Mostrar el reporte en una ventana
+        report_window = tk.Toplevel(self.root)
+        report_window.title("Reporte de Simulación")
+        report_text_widget = tk.Text(report_window, width=80, height=20)
+        report_text_widget.pack(fill="both", expand=True)
+        report_text_widget.insert(tk.END, report_text)
+        report_text_widget.config(state='disabled')
+
+    def on_device_double_click(self, event):
+        item = self.network_canvas.get_tk_widget().focus()
+        # Aquí podrías implementar interacción con los nodos si usas un canvas interactivo
+
+def main():
+    root = ttk.Window(themename="darkly")
+    app = SimulationApp(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
+
