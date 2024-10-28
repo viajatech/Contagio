@@ -3,7 +3,7 @@ El script "Contagio by Viaja Tech" es una herramienta educativa diseñada para s
 ![](https://github.com/viajatech/Contagio/blob/main/maxresdefault.jpg).
 -----
 ![](https://github.com/viajatech/Contagio/blob/main/GUI%20CONTAGIO%20ALPHA.png)
-![](https://github.com/viajatech/Contagio/blob/main/GUI%20REPORTE.png).
+![](https://github.com/viajatech/Contagio/blob/main/GUI%20REPORTE.png)
 -----
 Sus principales funciones son:
 
