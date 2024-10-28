@@ -33,4 +33,5 @@ Contenido Educativo:
 
 Una pestaña informativa que proporciona conceptos clave sobre ciberseguridad y enlaces a recursos adicionales, fomentando el aprendizaje y la reflexión.
 En resumen, el script ofrece una experiencia interactiva y visual para comprender cómo se propaga el malware en redes, los factores que influyen en su éxito y la importancia de las medidas de seguridad, todo dentro de un entorno seguro y controlado ideal para fines educativos.
+
 ------
