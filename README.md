@@ -1,5 +1,6 @@
 El script "Contagio by Viaja Tech" es una herramienta educativa diseñada para simular la propagación de malware en una red controlada. 
 -----
+![](https://github.com/viajatech/Contagio/blob/main/maxresdefault.jpg).
 ![](https://github.com/viajatech/Contagio/blob/main/GUI%20CONTAGIO%20ALPHA.png)
 ![](https://github.com/viajatech/Contagio/blob/main/GUI%20REPORTE.png).
 -----
